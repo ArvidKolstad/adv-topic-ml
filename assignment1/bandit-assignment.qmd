@@ -1,4 +1,3 @@
-
 ---
 title: Bandit Assignment
 jupyter:
@@ -490,8 +489,9 @@ class ThompsonSampling(BanditAlgorithmBase):
         self.K = K
         self.T = T
 
-        self.prior_settings = np.ones((K,2))
 
+        self.alpha = np.ones(K)
+        self.beta = np.ones(K)
 
     
     def select_action(self):
@@ -504,7 +504,7 @@ class ThompsonSampling(BanditAlgorithmBase):
         An action index (integer) in [0, K-1]
 
         """
-        sampled_mean = [self.beta_dist.rvs(setting[0],setting[1]) for setting in self.prior_settings]
+        sampled_mean = np.random.beta(self.alpha,self.beta)
         chosen_action = np.argmax(sampled_mean)
         return chosen_action
 
@@ -528,9 +528,9 @@ Parameters
         
         # FILL IN CODE HERE
         if reward == 1:
-            self.prior_settings[action,0] +=1
-
-        self.prior_settings[action,1] +=1
+            self.alpha[action] +=1
+        else:
+            self.beta[action] +=1
 ```
 
 Run the algorithm in the provided environment using the code below (averaging the regret over all runs). The plot should show sublinear regret with respect to $t$.
@@ -675,7 +675,8 @@ class ExploreFirstC(BanditAlgorithmBase):
 
 ```{python}
 np.random.seed(SEED)
-policy = ExploreFirst
+policy = ExploreFirstC
 submission_df = run_repeated_experiments(policy, T, K_CROPS, SEED, CropEnvironment)
 submission_df.plot(x = 't', y = 'regret', title = f'Crop Regret ({policy.__name__})')
 ```
+
