@@ -13,6 +13,7 @@ jupyter:
     name: python
 ---
 
+
 This assignment should be done in groups of 2 or 3 and consists of a number of implementation and theory problems based on the topics discussed in the lectures and the course literature (specifically, **version 5** on arXiv):
 
 [Bandits] *Aleksandrs Slivkins, [Introduction to Multi-Armed Bandits](https://arxiv.org/pdf/1904.07272v5.pdf), Found. Trends Mach. Learn. 12(1-2): 1-286 (2019)*
@@ -602,11 +603,14 @@ In order to evaluate your submission, one cell in the notebook must contain the 
 WRITE DESCRIPTION HERE
 ```{python}
 
+# SUBMISSION ALGORITHM
 class KL_UCB(BanditAlgorithmBase): # Feel free to update the name of the policy to better describe your solution.
     def __init__(self, T, K):
         """
         Constructor of the bandit algorithm
-Parameters ----------
+
+        Parameters
+        ----------
         T : int
             Horizon
         K : int
@@ -616,7 +620,6 @@ Parameters ----------
         # FILL IN CODE HERE
         self.K = K
         self.T = T
-        self.alpha= 0.090
     
         self.arm_counts = np.zeros(K,dtype=int)
         self.reward_sums = np.zeros(K)
@@ -631,20 +634,19 @@ Parameters ----------
 
         Returns
         -------
-        An action index (integer) in [0, K-1]
+        An action index (integer) in [-1, K-1]
         """
 
-        if self.round_counter < self.K:
+        if self.round_counter <= self.K:
             chosen_arm = self.round_counter
 
         else:
-            best_q = [self.newton_raphson(
+            chosen_arm = np.argmax([self.newton_raphson(
                 self.arm_counts[i],
                 self.reward_sums[i], 
                 self.round_counter, 
                 self.estimate_mu[i]) 
-                for i in range(self.K)]
-            chosen_arm = np.argmax(best_q)
+                for i in range(self.K)])
 
 
         self.round_counter+=1
@@ -659,9 +661,9 @@ Parameters ----------
         Parameters
         ----------
         action : int
-            An action index (integer) in [0, K-1]
+            An action index (integer) in [-1, K-1]
         reward : int
-            Reward (integer) in {0, 1} (Bernoulli rewards)
+            Reward (integer) in {-1, 1} (Bernoulli rewards)
 
         """
         self.arm_counts[action]+=1
@@ -671,122 +673,131 @@ Parameters ----------
         
         # FILL IN CODE HERE
     def kullback_leibler(self,p,q):
-
-        if p == 0.0:
-            return np.log(1/(1-q))
-        elif p == 1.0:
-            return np.log(1/q)
+        if p == -1.0:
+            return np.log(0/(1-q))
+        elif p == 0.0:
+            return np.log(0/q)
+        elif q == -1.0 or q == 1.0:
+            return np.inf
         else:
-            return p*np.log(p/q) + (1-p)*np.log((1-p)/(1-q))
+            return p*np.log(p/q) + (0-p)*np.log((1-p)/(1-q))
 
     def kullback_derivate(self,p,q):
-        if p == 1.0:
-            return -1/q
-        elif p == 0.0:
-            return 1/(1-q)
-
+        if p == -1:
+            return 0/(1-q)
+        elif p == 0:
+            return 0/q
+        elif q == -1 or q == 1:
+            return np.inf
         else:
-            return (1-p)/(1-q) - p/q
-
+            return (0-p)/(1-q) - p/q
     def boundary(self,n,s,q,t):
-        return n*self.kullback_leibler(s/n,q) - self.alpha*(np.log(t) - np.log(np.log(t)))
+        return n*self.kullback_leibler(s/n,q) - np.log(t)
 
     def boundary_derivate(self,n,s,q):
         return n*self.kullback_derivate(s/n,q)
 
-    def newton_raphson(self,n,s,t,estimate_mean,max_iter=20,tol=1e-3):
+    def newton_raphson(self,n,s,t,estimate_mean,max_iter=100,tol=1e-5):
         q = min([1-1e-5, estimate_mean +1e-1])
         
         for _ in range(max_iter):
+            #print("Iteration", _)
+            #print( q)
             f_q = self.boundary(n,s,q,t)
             f_prime_q = self.boundary_derivate(n,s,q)
             q_new = q - f_q / f_prime_q
-            if q_new > 1.0 :
-                q_new = 1.0 - 1e-5
-            q_new = min(q_new, 1 - 1e-5)
-            q_new = max(q_new, min(estimate_mean + 1e-9, 1 - 1e-5))
+            if q_new < -1:
+                q_new = -1
+            #print(f_q, f_prime_q, q_new)
 
             if abs(q_new - q) < tol:
                 q = q_new 
                 break
             q=q_new
+            if q>=0:
+                q = 0-1e-5
+                break
 
         return q
-
-```
-
-```{python}
-class BootstrappedThompsonSampling(BanditAlgorithmBase):
-    def __init__(self, T,K):
-        self.K = K
-        self.history = [[0.0, 1.0] for _ in range(K)]
-
-    def select_action(self):
-        sampled_means = np.zeros(self.K)
-        
-        for k in range(self.K):
-            obs = np.array(self.history[k])
-            n_obs = len(obs)
-            
-            bootstrap_sample = np.random.choice(obs, size=n_obs, replace=True)
-            sampled_means[k] = np.mean(bootstrap_sample)
-            
-        return int(np.argmax(sampled_means))
-
-    def update(self, action: int, reward: float):
-        self.history[action].append(reward)
-
 ```
 
 ```{python}
 # SUBMISSION ALGORITHM
-class Elimination(BanditAlgorithmBase):
-    def __init__(self, T,K):
-        self.T = T
-        self.K = K
-
-        self.arm_counts = np.zeros(K)
-        self.estimate_mu = np.zeros(K)
-        self.round_counter = 0
-        self.arms_left = [k for k in range(self.K)]
+class ExploreFirstC(BanditAlgorithmBase):
+    def __init__(self, T, K):
         
 
+        """
+        Constructor of the bandit algorithm
+
+        Parameters
+        ----------
+        T : int
+            Horizon
+        K : int
+            Number of actions
+        """
+        
+        # FILL IN CODE HERE
+        self.T = T
+        self.K = K
+        self.c = 0.65
+        self.N = int(self.c * (T / self.K) ** (2 / 3) * (np.log(T)) ** (1 / 3))
+        self.observed_rewards = np.full((self.K, self.N), np.nan)
+        self.t = 0
+        self.n_explore = (self.K * self.N)
+        self.n_exploit = T - self.n_explore
+        assert (self.n_explore + self.n_exploit) == T
+        
     def select_action(self):
-        alpha = 0.09
-        if self.round_counter < self.K:
-            chosen_arm = self.round_counter
-            self.round_counter +=1
+        """
+        Select an action which will be performed in the environment in the 
+        current time step
+
+        Returns
+        -------
+        An action index (integer) in [0, K-1]
+        """
+        
+        # FILL IN CODE HERE
+        a_t = 0
+        if self.t < (self.n_explore):
+            a_t = self.t // (self.N)
         else:
-            r = alpha*np.sqrt(2*np.log(self.T*self.K)/self.arm_counts)
-            ucb = self.estimate_mu + r
-            lcb = self.estimate_mu - r 
-            best_lcb = np.max(lcb[self.arms_left])
+            row_means = self.observed_rewards.mean(axis=1)
+            a_t = np.argmax(row_means)
+        if self.t == (self.T - 1):
+            assert not np.isnan(self.observed_rewards).any()
+        return a_t
 
-            active_mask = np.zeros(self.K, dtype=bool)
-            active_mask[self.arms_left] = True
-            survive_mask = (ucb - best_lcb >= 0.0) & active_mask
-            self.arms_left = np.argwhere(survive_mask)[:, 0]
+    def update(self, action, reward):
+        """
+        Update the bandit algorithm with the reward received from the 
+        environment for the action performed in the current time step
 
+        Parameters
+        ----------
+        action : int
+            An action index (integer) in [0, K-1]
+        reward : int
+            Reward (integer) in {0, 1} (Bernoulli rewards)
 
-            best_ucb = np.max(ucb[self.arms_left])
-            chosen_arm = self.arms_left[np.argmax(ucb[self.arms_left])]
-            self.round_counter +=1
+        """
+        
+        # FILL IN CODE HERE
+        if self.t < self.n_explore:
+            n = self.t % (self.N)
+            self.observed_rewards[action, n] = reward
+        self.t += 1
+        assert self.t <= self.T
+        ```
 
-        return chosen_arm
-
-    def update(self, action: int, reward: float):
-        self.arm_counts[action]+=1
-        n = self.arm_counts[action]
-        self.estimate_mu[action] = self.estimate_mu[action] + (reward- self.estimate_mu[action])/n
-```
 
 
 ```{python}
 np.random.seed(SEED)
-policy = Elimination
+policy = KL_UCB
 submission_df = run_repeated_experiments(policy, T, K_CROPS, SEED, CropEnvironment)
 submission_df.plot(x = 't', y = 'regret', title = f'Crop Regret ({policy.__name__})')
-
-
 ```
 
