@@ -216,7 +216,7 @@ class ExploreFirst(BanditAlgorithmBase):
 
         """
         # FILL IN CODE HERE
-        if self.round_counter =< self.N*self.K:
+        if self.round_counter <= self.N*self.K:
             self.arm_counts[action]+=1
             n = self.arm_counts[action]
             self.estimate_mu[action] = self.estimate_mu[action] + (reward- self.estimate_mu[action])/n
