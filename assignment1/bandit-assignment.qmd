@@ -442,7 +442,7 @@ If we no consider $A^+ = \{A \backslash\{a^*\}\}$, were $A$ is the set of all ar
 
 $R(t) = \Sigma_{a\in A^+}R(t;a) \leq \Sigma_{a\in A^+} 2\epsilon \sqrt{2n(a_t)log(T)}\leq 2\epsilon \sqrt{2log(T)} \Sigma_{a\in A} \sqrt{n(a_t)}$
 
-Because $\sqrt{x}$ is strictly convex for positiv values of $x$, and the fact that $\Sigma_{a\in A}n_t(a)=t$ we can use jensens inequality, like this:
+Because $\sqrt{x}$ is strictly concave for positiv values of $x$, and the fact that $\Sigma_{a\in A}n_t(a)=t$ we can use jensens inequality, like this:
 
 $\frac{1}{K}\Sigma_{a\in A}\sqrt{n_t(a)} = \sqrt{\frac{1}{K}\Sigma_{a\in A}n_t(a)}= \sqrt{\frac{t}{K}}$
 
