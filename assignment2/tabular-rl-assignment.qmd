@@ -347,7 +347,7 @@ reward_smooth_mean,reward_smooth_std = smooth_and_statistics(all_rewards,window)
 
 x = np.linspace(1,smooth_steps,smooth_steps)
 plt.plot(x,reward_smooth_mean, label ="mean")
-plt.fill_between(x,reward_smooth_std, label = "std")
+plt.fill_between(x,reward_smooth_mean - reward_smooth_std,y2= reward_smooth_mean+ reward_smooth_std, label = "std", alpha = 0.3)
 plt.title("Rewards")
 plt.legend()
 
@@ -364,28 +364,44 @@ Write down the update equation for Q-learning and SARSA. Let $\alpha$ denote the
 
 #### Answer
 
-TODO
+For the q-learning:
+$Q(S_t,A_t) = Q(S_t, A_t) + \alpha(R_{t+1} + \gamma max_aQ(S_{t+1}, a) - Q(S_t,A_t))  $
+
+
+For the SARSA
+$Q(S_t,A_t) = Q(S_t, A_t) + \alpha(R_{t+1} + \gamma Q(S_{t+1}, A_{t+1}) - Q(S_t,A_t))  $
+
+Where the $S_t$ is the state at time step $t$, $A_t$ is the action taken at time step $t$ and $R_{t+1}$ is the reward achived by being in $S_t$ and taking action $A_t$.
+
 
 ### Task 4.2 (0.5 p)
 For each algorithm, draw the backup diagram.
 
 #### Answer
 
-TODO
 
 ### Task 4.3 (0.25 p)
-For each algorithm, state whether $q_\pi$ (action value for the behavior policy) or $q_*$ (action value for the optimal policy) is estimated.
+For each algorithm, state whether $q_{\pi}$ (action value for the behavior policy) or $q_*$ (action value for the optimal policy) is estimated.
 
 #### Answer
 
-TODO
+Q-Learning:
+For the the updated q_value is based on a greedy algortihm ($q_{*}$) were the maxium value over all the avalible action is taken into account, and not what the policy actually will do.
+
+SARSA:
+The updated q-value is based on the behavior policys choice ($q_{\pi}$).
+
 
 ### Task 4.4 (0.25 p)
 For each algorithm, state whether it can be used off-policy or has to be on-policy.
 
 #### Answer
+Q-learning:
+For q-learning the algorithm can be used as off-policy with the special case were the behavior policy used is greedy.
 
-TODO
+SARSA:
+This algorithm has to be used as an on-policy because this is how it's defined. The q-values are being updated with the policy in mind. Ofcourse you can pick two different policys, where one is choosing the action and another policy updating the q-values, but then it would not be defined as SARSA.
+
 
 ### Task 4.5 (1 p)
 
@@ -393,7 +409,11 @@ Give an example of when each method would be preferable over the other.
 
 #### Answer
 
-TODO
+Q-Learning: 
+This algorithm is greedy and will opt for more risky and optimal choices instead for safer but sub-optimal choices. Therefore this algorithm is favored when failing is not coupled with such bad consequenses and finding the optimal choices is the goal. This could be finding the shortest route through a complex network of roads.
+
+SARSA: 
+This algorithm takes the policy into concideration when updating the q-values, which leads to more safe choices, with the chatch of them being sub-optimal. This could be a better choice when loosing is cathastropic. An example of this could be the Cliff walking problem from the lecture notes.
 
 ## Task 5: Value iteration
 
@@ -412,8 +432,9 @@ Write down the update equation for *action value iteration*. The LHS should be $
 - $q_k(s',a')$: The previous Q-value estimate.
 
 #### Answer
+ $q_{k+1}(s,a)=(\sum_{r\in R, s' \in S}p(s',r|s,a)(r + \gamma max_aq_{k}(s', a'))$
 
-TODO
+
 
 ### Task 5.2 (1.5 p)
 Implement `qvalue_iteration`.
@@ -421,6 +442,15 @@ Implement `qvalue_iteration`.
 #### Answer
 
 ```{python}
+def get_new_q_value(s: int,a: int,possible_next_states: list, q_values:np.ndarray ,gamma: float):
+    n_new_states = len(possible_next_states)
+    new_q=0
+    for i in range(n_new_states):
+        next_state,reward,probability = possible_next_states[i]
+        new_q += probability *(reward + gamma *np.max(q_values[next_state,:]))
+    return new_q
+
+
 def qvalue_iteration(env_dynamics: dict, gamma: float, threshold: float = 1e-6) -> np.ndarray:
     """Perform Q-value iteration given transition probabilities and rewards.
 
@@ -440,7 +470,28 @@ def qvalue_iteration(env_dynamics: dict, gamma: float, threshold: float = 1e-6) 
     Returns:
         np.ndarray: A 2D array of shape (n_states, n_actions) representing the optimal Q-values.
     """
-    # TODO
+    n_states = 6
+    n_actions = 2
+    q_values = np.zeros((n_states,n_actions))
+    q_values_done = np.zeros((n_states,n_actions), dtype=bool)
+
+    while (True):
+        if np.sum(q_values_done) ==  n_states * n_actions:
+            break
+
+        for state in range(n_states):
+            for action in range(n_actions):
+                possible_states = env_dynamics[state][action]
+                new_q_value = get_new_q_value(state,action,possible_states,q_values,gamma)
+                if np.abs(new_q_value - q_values[state,action] ) < threshold:
+                    q_values_done[state,action] =True
+
+                q_values[state,action] = new_q_value
+                
+
+
+    return q_values
+
 ```
 
 ### Task 5.3 (1 p)
@@ -459,6 +510,34 @@ As a sanity check, all optimal Q-values are between $3$ and $5$.
 
 ```{python}
 # TODO
+
+n_states = 6
+n_actions = 2
+env_dynamics = {}
+small_reward = 5/1000
+large_reward = 1
+
+for state in range(n_states):
+    actions ={}
+    if state == 0:
+        actions[0] = [(0,small_reward,1)]
+    else: 
+        actions[0] = [(state-1, 0,1)]
+
+    if state == 0:
+        actions[1] = [(state,0,0.4), (state+1,0,0.6)]
+    elif state < n_states -1:
+        actions[1] = [(state-1,0,0.05),(state,0,0.6), (state+1,0,0.35)]
+    else:
+        actions[1] = [(state-1,0,0.4),(state,0,0.4), (0,large_reward,0.20)]
+    env_dynamics[state] = actions
+
+
+#print(env_dynamics)
+gamma = 0.99
+print(qvalue_iteration(env_dynamics,gamma))
+
+
 ```
 
 ## Task 6: Q-learning
@@ -533,4 +612,3 @@ Your answer is expected to be more detailed than "because of X". Try to refer to
 
 #### Answer
 
-TODO
