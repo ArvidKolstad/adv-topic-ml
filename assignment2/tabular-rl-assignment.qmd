@@ -227,7 +227,7 @@ class RandomRiverSwimAgent(RiverSwimAgent):
 
     # TODO
     def act(self, observation: int) -> int:
-        action = np.random.choice([0,1])
+        action = self.rng.choice([0,1])
         return action
 
 
@@ -300,7 +300,8 @@ def multiple_training_runs(
 # TODO
 steps = 100000
 runs = 10
-all_states,all_actions,all_rewards,agent = multiple_training_runs(RiverSwim,RandomRiverSwimAgent, steps, runs, None, None)
+seed = 123
+all_states,all_actions,all_rewards,agent = multiple_training_runs(RiverSwim,lambda: RandomRiverSwimAgent(seed), steps, runs, None, None)
  
 
 ```
@@ -357,6 +358,8 @@ plt.legend()
 ```
 
 
+This result feels right. Because of how the enviroment looks, with a random walk, the model will almost never pick up the large reward but instead pick up the small reward often. The small reward is 0.005 and the estimated reward per step is around 0.0017 if we calculate the ratio between these we get that it picks up the reward about every third step which seems accurate if the steps are random.
+
 
 ## Task 4: Method background
 
@@ -402,7 +405,7 @@ For each algorithm, state whether it can be used off-policy or has to be on-poli
 
 #### Answer
 Q-learning:
-For q-learning the algorithm can be used as off-policy with the special case were the behavior policy used is greedy.
+For q-learning the algorithm is off-policy with the exception when the behavior policy used is greedy, which makes it a on-policy.
 
 SARSA:
 This algorithm has to be used as an on-policy because this is how it's defined. The q-values are being updated with the policy in mind. Ofcourse you can pick two different policys, where one is choosing the action and another policy updating the q-values, but then it would not be defined as SARSA.
@@ -437,7 +440,7 @@ Write down the update equation for *action value iteration*. The LHS should be $
 - $q_k(s',a')$: The previous Q-value estimate.
 
 #### Answer
- $q_{k+1}(s,a)=(\sum_{r\in R, s' \in S}p(s',r|s,a)(r + \gamma max_aq_{k}(s', a'))$
+ $q_{k+1}(s,a)=\sum_{r\in R, s' \in S}p(s',r|s,a)(r + \gamma \max{a'} q_{k}(s', a'))$
 
 
 
@@ -540,6 +543,28 @@ def get_real_q_values():
     real_qvalues = qvalue_iteration(env_dynamics,gamma)
     return real_qvalues
 
+def plot_q_values(q_values, q_min,q_max):
+    fig,ax = plt.subplots(1,1, figsize=(8,3))
+    ax.imshow(q_values, cmap="viridis", vmin=q_min, vmax=q_max)
+    n_states, n_actions= q_values.shape
+    
+    for i in range(n_states):
+        for j in range(n_actions):
+            ax.text(j,i, f"{q_values[i,j]:.3f}", ha="center", va="center", color="white", fontsize = 8)
+   
+    ax.set_yticks(range(n_states))
+    ax.set_yticklabels([rf"$S_{s}$" for s in range(n_states)])
+    ax.set_xticks(range(n_actions))
+    ax.set_xticklabels(["Left (0)", "Right (1)"], fontsize = 6)
+    ax.set_xlabel("Action")
+    ax.set_ylabel("State")
+    plt.show()
+    plt.close()
+
+
+q_values = get_real_q_values()
+plot_q_values(q_values,0,5)
+
 
 ```
 
@@ -560,21 +585,21 @@ class QLearningRiverSwimAgent(RiverSwimAgent):
         self.gamma = gamma
         self.epsilon= eps
         self.lr = lr
-        self.seed = seed
+        self.rng = np.random.default_rng(seed)
         self.saved_mse = []
 
 
     @override
     def act(self, observation: int) -> int:
         possible_actions = [0,1]
-        r= np.random.rand()
+        r= self.rng.random()
         if r>= self.epsilon:
             if self.q[observation,0] == self.q[observation,1]:
-                choosen_action = np.random.choice(possible_actions)
+                choosen_action = self.rng.choice(possible_actions)
             else:
                 choosen_action= np.argmax(self.q[observation,:])
         else:
-            choosen_action = np.random.choice(possible_actions)
+            choosen_action = self.rng.choice(possible_actions)
         return choosen_action
 
 
@@ -609,10 +634,9 @@ def mse(target_array,simulated_array):
 target = get_real_q_values()
 def get_q_values(agent,state,action,reward):
     q_values = agent.q
-    print(q_values)
     mse_value = mse(target,q_values)
     agent.saved_mse.append(mse_value)
-    print(mse_value)
+    plot_q_values(q_values,0,5)
 
 steps = 100000
 runs = 10
@@ -620,20 +644,21 @@ runs = 10
 callback_interval = 10000
 n_states = 6
 gamma= 0.99
+seed = 42
 
 
 print("STARTING TRAINING NEGATIVE MODEL")
-all_states_neg,all_actions_neg,all_rewards_neg,agent_neg = multiple_training_runs(RiverSwim,lambda: QLearningRiverSwimAgent(n_states,gamma,init_val = 0), steps, runs, get_q_values,callback_interval)
+all_states_neg,all_actions_neg,all_rewards_neg,agent_neg = multiple_training_runs(RiverSwim,lambda: QLearningRiverSwimAgent(n_states,gamma,init_val = 0, seed = seed), steps, runs, get_q_values,callback_interval)
 
 
 print("STARTING TRAINING POSITIVE MODEL")
 
 
-all_states_pos,all_actions_pos,all_rewards_pos,agent_pos = multiple_training_runs(RiverSwim,lambda: QLearningRiverSwimAgent(n_states,gamma,init_val = 5), steps, runs, get_q_values,callback_interval)
+all_states_pos,all_actions_pos,all_rewards_pos,agent_pos = multiple_training_runs(RiverSwim,lambda: QLearningRiverSwimAgent(n_states,gamma,init_val = 5, seed= seed), steps, runs, get_q_values,callback_interval)
 
 
 print("STARTING TRAINING RANDOM MODEL")
-all_states_random,all_actions_random,all_rewards_random,agent_random = multiple_training_runs(RiverSwim,RandomRiverSwimAgent, steps, runs, None, None)
+all_states_random,all_actions_random,all_rewards_random,agent_random = multiple_training_runs(RiverSwim,lambda: RandomRiverSwimAgent(seed= seed), steps, runs, None, None)
 ```
 
 
@@ -680,7 +705,7 @@ plt.show()
 # TODO
 mse_pos = agent_pos.saved_mse
 mse_neg = agent_neg.saved_mse
-x_1 =np.linspace(0,100000,len(mse_pos))
+x_1 =np.arange(0,steps,callback_interval)
 plt.semilogy(x_1, mse_pos, label = "Initial q-value: 5")
 plt.semilogy(x_1,mse_neg, label= "Initial q-value: 0")
 plt.xlabel("Step")
@@ -692,9 +717,9 @@ plt.show()
 
 ```{python}
 # TODO
-action_neg = all_actions_neg[:, -100:].flatten()
-action_pos = all_actions_pos[:, -100:].flatten()
-action_random = all_actions_random[:, -100:].flatten()
+action_neg = all_actions_neg[:, -1000:].flatten()
+action_pos = all_actions_pos[:, -1000:].flatten()
+action_random = all_actions_random[:, -1000:].flatten()
 
 plt.hist([action_neg, action_pos, action_random],
          bins=[-0.5, 0.5, 1.5],          # one bin for 0, one for 1
@@ -717,5 +742,5 @@ Which of the two Q-learning agents performs the best, and why?
 Your answer is expected to be more detailed than "because of X". Try to refer to specifics about the RiverSwimEnvironment, not just things like "X increases/decreases exploration".
 
 #### Answer
-If we compare the two learning models we can see that they behave very different, with the 0-model almost always picking left, and the 5-model almost always picking right. This is probably the case because when starting at 0, the probability of exploring a suboptimal choice is $\epsilon\frac{1}{2}$ which means with an epsilon of $0.2$ the model only has a $0.1$ chance of exploring a suboptimal step. We also know that that the only rewards is at state 0 going left and state 5 going right with a probability of $0.2$. Because we always start in state 0 it's therefore very probable that the state 0 go left reward will start to affect the q-values first, which means that the model will in the beginning favor to go left. This therefore means that for the model to succede to going for the big reward it needs (in the best case scenario) to pick the suboptimal choice 6 times in a row, which on it's own has a probability of $1e-6$ which is why the model 0 is satisfied with only going to the left all the time, because this gaurentees some success at least. This can be confirmed by the plots of the mean reward. This behavior can be counterd by raising the epsilon value to have the exploration to play a bigger part in the models behavior, but for this to have a actuall effect for this specific problem it needs to be above $\epsilon > 0.5$ and this is not great for the performance of the model. Instead if we look at the 5-model, we see that it gets a lower MSE value i.e. a more correct q-value. This is because the q-value of 5 will be better than the q-value of always going to the left will get you. Therefore after exploring the left option a couple of times, the q-value for these value will shrink and the right actions will become optimal for the time and this will make the model explore them without having the low probability for a suboptimal action. This makes it actually explore the states to the right and therefore get to know the real q-values on that part, and because these are higher in theroy,the model will start to go to the right all the time. Therefore we can confidently say that the 5-model is a much better choice for this problem.
+If we compare the two learning models we can see that they behave very different, with the 0-model almost always picking left, and the 5-model almost always picking right. This is probably the case because when starting at 0, the probability of exploring a suboptimal choice is $\epsilon\frac{1}{2}$ which means with an epsilon of $0.1$ the model only has a $0.05$ chance of exploring a suboptimal step. We also know that that the only rewards is at state 0 going left and state 5 going right with a probability of $0.05$. Because we always start in state 0 it's therefore very probable that the state 0 go left reward will start to affect the q-values first, which means that the model will in the beginning favor to go left. This therefore means that for the model to succede to going for the big reward it needs (in the best case scenario) to pick the suboptimal choice 6 times in a row, which on it's own has a probability of $1.5625e-8$ which is why the 0-model is satisfied with only going to the left all the time, because this gaurentees some success at least. This can be confirmed by the plots of the mean reward. This behavior can be counterd by raising the epsilon value to have the exploration to play a bigger part in the models behavior, but for this to have a actuall effect for this specific problem the model amost becomes random because the epsilon is so high. Instead if we look at the 5-model, we see that it gets a lower MSE value i.e. a more correct q-value. This is because the q-value of 5 will be better than the q-value of always going to the left will get you. Therefore after exploring the left option a couple of times, the q-value for these value will shrink and the right actions will become optimal for the time and this will make the model explore them without having the low probability for a suboptimal action. This makes it actually explore the states to the right and therefore get to know the real q-values on that part, and because these are higher in theroy,the model will start to go to the right all the time. Therefore we can confidently say that the 5-model is a much better choice for this problem.
  
