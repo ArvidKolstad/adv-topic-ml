@@ -120,7 +120,8 @@ Draw the MDP diagram of the `RiverSwim` environment when `n_states=4`.
 
 #### Answer
 
-TODO
+![](enviroment_diagram.pdf)
+
 
 ### Task 1.2 (0.5 p)
 Is this an episodic or continuing environment?
@@ -348,6 +349,8 @@ reward_smooth_mean,reward_smooth_std = smooth_and_statistics(all_rewards,window)
 x = np.linspace(1,smooth_steps,smooth_steps)
 plt.plot(x,reward_smooth_mean, label ="mean")
 plt.fill_between(x,reward_smooth_mean - reward_smooth_std,y2= reward_smooth_mean+ reward_smooth_std, label = "std", alpha = 0.3)
+plt.ylabel("Mean reward (window:1000)")
+plt.xlabel("Steps")
 plt.title("Rewards")
 plt.legend()
 
@@ -378,6 +381,8 @@ Where the $S_t$ is the state at time step $t$, $A_t$ is the action taken at time
 For each algorithm, draw the backup diagram.
 
 #### Answer
+
+![](backup_diagram.pdf)
 
 
 ### Task 4.3 (0.25 p)
@@ -536,7 +541,6 @@ def get_real_q_values():
     return real_qvalues
 
 
-        self.
 ```
 
 ## Task 6: Q-learning
@@ -664,6 +668,9 @@ plt.fill_between(x,reward_smooth_mean_pos - reward_smooth_std_pos,y2= reward_smo
 
 plt.fill_between(x,reward_smooth_mean_random - reward_smooth_std_random,y2= reward_smooth_mean_random+ reward_smooth_std_random, alpha = 0.3)
 plt.title("Rewards")
+
+plt.xlabel("Step")
+plt.ylabel("mean reward (window: 1000)")
 plt.legend()
 plt.show()
 ```
@@ -676,6 +683,8 @@ mse_neg = agent_neg.saved_mse
 x_1 =np.linspace(0,100000,len(mse_pos))
 plt.semilogy(x_1, mse_pos, label = "Initial q-value: 5")
 plt.semilogy(x_1,mse_neg, label= "Initial q-value: 0")
+plt.xlabel("Step")
+plt.ylabel("MSE(q-values))")
 plt.legend()
 plt.show()
 
@@ -701,9 +710,6 @@ plt.show()
 
 ```
 
-```{python}
-# TODO
-```
 
 ### Task 6.4 (2 p)
 Which of the two Q-learning agents performs the best, and why?
@@ -711,4 +717,5 @@ Which of the two Q-learning agents performs the best, and why?
 Your answer is expected to be more detailed than "because of X". Try to refer to specifics about the RiverSwimEnvironment, not just things like "X increases/decreases exploration".
 
 #### Answer
-
+If we compare the two learning models we can see that they behave very different, with the 0-model almost always picking left, and the 5-model almost always picking right. This is probably the case because when starting at 0, the probability of exploring a suboptimal choice is $\epsilon\frac{1}{2}$ which means with an epsilon of $0.2$ the model only has a $0.1$ chance of exploring a suboptimal step. We also know that that the only rewards is at state 0 going left and state 5 going right with a probability of $0.2$. Because we always start in state 0 it's therefore very probable that the state 0 go left reward will start to affect the q-values first, which means that the model will in the beginning favor to go left. This therefore means that for the model to succede to going for the big reward it needs (in the best case scenario) to pick the suboptimal choice 6 times in a row, which on it's own has a probability of $1e-6$ which is why the model 0 is satisfied with only going to the left all the time, because this gaurentees some success at least. This can be confirmed by the plots of the mean reward. This behavior can be counterd by raising the epsilon value to have the exploration to play a bigger part in the models behavior, but for this to have a actuall effect for this specific problem it needs to be above $\epsilon > 0.5$ and this is not great for the performance of the model. Instead if we look at the 5-model, we see that it gets a lower MSE value i.e. a more correct q-value. This is because the q-value of 5 will be better than the q-value of always going to the left will get you. Therefore after exploring the left option a couple of times, the q-value for these value will shrink and the right actions will become optimal for the time and this will make the model explore them without having the low probability for a suboptimal action. This makes it actually explore the states to the right and therefore get to know the real q-values on that part, and because these are higher in theroy,the model will start to go to the right all the time. Therefore we can confidently say that the 5-model is a much better choice for this problem.
+ 
