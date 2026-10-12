@@ -120,7 +120,7 @@ Draw the MDP diagram of the `RiverSwim` environment when `n_states=4`.
 
 #### Answer
 
-![](enviroment_diagram.png)
+![](images/enviroment_diag.png)
 
 
 ### Task 1.2 (0.5 p)
@@ -382,7 +382,7 @@ For each algorithm, draw the backup diagram.
 
 #### Answer
 
-![](backup_diagram.png)
+![](images/backup_diag.png)
 
 
 ### Task 4.3 (0.25 p)
