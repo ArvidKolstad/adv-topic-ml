@@ -26,6 +26,7 @@ Import required packages. Add additional packages if needed.
 import gymnasium as gym
 import numpy as np
 
+from pandas.core.config_init import is_terminal
 import tqdm
 
 import torch
@@ -195,7 +196,6 @@ world.get_coordinates()
 In this part, we will parametrise the policy according to a direct (exponential) softmax distribution:
 $$
 \pi_\theta(a|s) = \frac{\exp{\theta^\top \phi_{s,a}}}{\sum_{a'} {\exp{\theta^\top \phi_{s,a'}}}}
-
 $$
 
 We will assume that the vectors $\phi_{s,a} \in \mathbb{R}^{|\mathcal{S}||\mathcal{A}|}$ are encoded as standard unit basis vectors (i.e., one-hot encoding).
@@ -219,6 +219,9 @@ def get_features_onehot(state:int, action:int):
     """
 
     # TODO
+    phi = np.zeros(196)
+    phi[4*state + action] = 1
+
 
     return phi
 ```
@@ -228,6 +231,8 @@ def get_features_onehot(state:int, action:int):
 ```{python}
 def get_initial_parameters():
     """Returns vector of size 196 of initial parameters theta"""
+    theta = np.zeros(196)
+    return theta
 
     # TODO
 ```
@@ -244,12 +249,34 @@ Then, using your expression, fill in `direct_parameterisation_derivative`, that 
 TODO
 
 ```{python}
+def softmax(weights,action_vectors,action_done):
+
+    prob = np.exp(action_vectors[action_done]@weights)/(np.sum(np.exp(action_vectors@weights)))
+    return prob
+
 def direct_parameterisation_gradient(action: int, state: int, theta: np.ndarray):
     """Returns the partial derivatives of the policy with respect to theta
 
     Assume actions are numbered from 0 to 3, and states are numbered from 0 to 48
     as explained above.
     """
+    gradient_vector = np.zeros(196)
+    action_vectors = np.array([get_features_onehot(state,a) for a in range(4)])
+
+    for act in range(4):
+        idx = 4*state + act
+        if act == action:
+            gradient_vector[idx] = softmax(theta,action_vectors,act)* (1 - softmax(theta,action_vectors,action))*action_vectors[act,idx]
+        else:
+            gradient_vector[idx] = -softmax(theta,action_vectors,act)*  softmax(theta,action_vectors,action)*action_vectors[act,idx]
+    
+    return gradient_vector
+
+    
+def direct_parameterisation(action,state, theta):
+    action_vectors = np.array([get_features_onehot(state,a) for a in range(4)])
+    prob = softmax(theta,action_vectors,action)
+    return prob
 
     # TODO
 ```
@@ -305,7 +332,9 @@ check()
 **Task 1.4 (0.5 pt):** In the lectures, you have been introduced to the REINFORCE algorithm. Explain what the regular REINFORCE objective aims to optimise and how it is achieved only using sample and no prior information on the MDP dynamics. 
 *Write in the Markdown cell below (use LaTeX-math mode for equations, etc.).*
 
-TODO
+The REINFORCE-algorithm aims to optimize the state-value function for the starting state which is dependent on the policy. Therefore we try to improve our policy to maximize this function. In our case we have a softmax function of a linear layer with weights which are multiplied by the one hot encoding vector. By changing the weight to improve the state-value function we can achieve this. This is done with the following algorithm:
+$\theta <- \theta + \alpha \gamma^t G \nabla ln(\pi(a|s)) $
+This works on the idea by taking the gradient of the state-value function with respect to the weights we can update these weights in the direction where the state value function increases the most at each step. This the update uses the policy-gradient theorem which is a analytic expression for the derivative of the state-value that contains no derivative of the state distribution. By sampling over different epsiodes, and updating after each episode this creates the same effect as calculation the state-distribution would. This is because the state distribution both depends on the policy and the environment, and therefore the $\gamma^2 G \nabla ln(\pi(a|s))$ is a unbiased estimate of the gradient of the state-value. Some episodes might be noisy but over many episods it converges to the true value.
 
 **Task 1.5 (3 pts):** Using your functions implemented in Task 1.1, 1.2 and 1.3, fill in the `ReinforceLearner` class. You can use the already implemented methods of the GridWorld class: 
 - `reset_world`: reset the world to starting state
@@ -321,13 +350,14 @@ TODO
 ```{python}
 class ReinforceLearner:
 
-    def __init__(self, learning_rate, gamma):
+    def __init__(self, learning_rate, gamma, seed = None):
         """Intialisation code"""
 
         self.world = GridWorld()
         self.learning_rate = learning_rate
         self.gamma = gamma
         self.theta = get_initial_parameters()
+        self.rng = np.random.default_rng(seed)
 
         ## TODO: you may use other variables or inputs as your hyperparameters
         # TODO
@@ -336,7 +366,39 @@ class ReinforceLearner:
         """Given the state, return the probability of taking each of the 4 actions"""
 
         # TODO
+        action_vectors = np.array([get_features_onehot(state,a) for a in range(4)])
+        probability= [ softmax(self.theta,action_vectors,a) for a in range(4)]
+        return probability
 
+    def run_episode(self, visualize_steps = False):
+        self.world.reset_world()
+        actions = []
+        states = []
+        rewards = []
+        more_steps= True
+        while more_steps:
+            if visualize_steps:
+                self.world.render_state()
+                print(" ")
+
+            current_state = self.world.get_state()
+            action_probs = self.get_action_prob(current_state)
+            action = self.rng.choice(self.world.list_actions(),p=action_probs )
+            self.world.step(action)
+
+            actions.append(action) 
+            states.append(current_state)
+            rewards.append(self.world.get_current_reward())
+            
+            if self.world.is_terminal():
+                more_steps = False
+
+        actions = np.array(actions)
+        states = np.array(states)
+        rewards = np.array(rewards)
+
+        assert actions.shape == states.shape and states.shape ==rewards.shape
+        return  actions,states, rewards
 
     def train(self, n_updates:int, n_trajectories:int):
         """Run the training procedure for `n_updates` steps
@@ -356,7 +418,37 @@ class ReinforceLearner:
         Also return the average reward observed"""
 
         # TODO
+        action_trajectorys = []
+        state_trajectorys = []
+        reward_trajectorys = []
+        reward_per_round = []
+        for episode in range(n_trajectories):
+            actions, states, rewards = self.run_episode()
 
+            action_trajectorys.append(actions)
+            state_trajectorys.append(states)
+            reward_trajectorys.append(rewards)
+            reward_per_round.append(np.sum(rewards))
+
+        delta_theta = np.zeros_like(self.theta)
+
+        for episode in range(n_trajectories):
+            delta_theta+= self.get_delta_theta(action_trajectorys[episode],state_trajectorys[episode],reward_trajectorys[episode])
+        self.theta = self.theta + delta_theta 
+        return np.mean(reward_per_round)
+
+    def get_delta_theta(self, actions,states,rewards):
+        delta_theta = np.zeros(196)
+        trajectory_length = len(rewards)
+        g = 0
+        for i in range(trajectory_length):
+            idx = trajectory_length - i -1
+            g = g* self.gamma + rewards[idx]
+            delta_theta += self.learning_rate * self.gamma**idx * g* direct_parameterisation_gradient(
+                    actions[idx],states[idx],self.theta)/direct_parameterisation(
+                    actions[idx],states[idx],self.theta)
+            
+        return delta_theta
 
     def evaluate(self, render: bool = True):
         """Evaluate current algorithm for a single episode and return.
@@ -364,8 +456,10 @@ class ReinforceLearner:
         You should
         (a) Print the total (undiscounted) reward from the episode.
         (b) Visualise the whole state history. (Hint: You can use multiple calls to GridWorld.render_state())"""
+        actions, states, rewards = self.run_episode(visualize_steps= render)
+        print("Total reward: ",np.sum(rewards))
 
-        # TODO
+       # TODO
 ```
 
 ### Evaluation
@@ -377,11 +471,25 @@ You made need to tune your hyper-parameters.
 ```{python}
 # Remember to evaluate it at the end. Show your evalutation (including visualization of state history)!
 # TODO
+seed = 42
+steps = 200
+batch = 10
+lr = 0.1
+gamma = 0.99
+agent = ReinforceLearner(lr,gamma,seed = seed)
+mean_rewards = agent.train(steps,batch)
+agent.evaluate()
 ```
 
 ```{python}
 ## Plot your rewards for your run of 1.5 here
 # TODO
+x = np.arange(0,steps,1)
+fig,ax = plt.subplots(figsize= (5,5))
+ax.plot(x,mean_rewards)
+ax.set_xlabel("Steps")
+ax.set_ylabel("Mean reward")
+ax.set_title("Reward over each batch")
 ```
 
 ### Additional Questions
@@ -390,12 +498,14 @@ You made need to tune your hyper-parameters.
 Explain how the exploration-exploitation trade-off was circumvented by your choice of parameters intialisation in two sentences, and how this approach could fail for some initialisations.
 *Write in the Markdown cell below (use LaTeX-math mode for equations, etc.).*
 
-TODO
+
+If you initalize the weights to be uniform, the agent will in the beginning before updating anything, every action totaly random because of the softmax function. If the the initalizations are higher in some areas these will get prioritized and therefore the agent will not explore these as much.
 
 **Task 1.8 (0.5 pt):** In a few sentences explain the shortcomings of the direct parametrisation (one parameter for each state-action pair).
 *Write in the Markdown cell below (use LaTeX-math mode for equations, etc.).*
 
-TODO
+One big drawback is that all the states are looked at totaly independent as they are not connected in any way, which means that generalization can't happen meaning that what the agent learns in one state isn't being transfered to the other. Another drawback is the dimensionality problem of this. It needs 4 different weights for every state so if one would scale this to a larger environment the weights would increase with $4*n^2$.
+
 
 ##  Part 2: CartPole with A2C (9 pts)
 
