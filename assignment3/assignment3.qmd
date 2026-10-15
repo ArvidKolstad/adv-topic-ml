@@ -12,9 +12,6 @@ jupyter:
     language: python
     name: python3
 ---
-
-
-
 This assignment should be done in groups of 2 or 3 (preferably 3).
 
 This assignment consists of two parts. In the first part, your task is to solve a grid world environment using the REINFORCE algorithm. In the second part, your task is to control a lunar lander in a smooth descent to the ground. It must land in-between two flags, quickly, using minimal fuel, and without damaging the lander. You will implement the A2C algorithm that will learn a control policy for the lander.
@@ -30,6 +27,8 @@ from pandas.core.config_init import is_terminal
 import tqdm
 
 import torch
+import torch.distributions
+
 
 import matplotlib.pyplot as plt
 from matplotlib.table import Table
@@ -596,6 +595,10 @@ First, you should familiarise yourself with the following paper [paper](https://
 
 TODO
 
+1. The A2C uses multiple diffrent training instances to create the the updates of the weightswhich creates a more diversive training data than just one agent training. It's a much more efficient way of creating the same effects as experience replay. It also implements n-step updates which means that you can have online training, and full Monte Carlo returns can be very noisy, and therefore the learning is much more stabel. It also because it's a actor-critic model, creates an estimate for both the state-value function and the policy with separate models, where the critice acts like a benchmark that varies over all the states.
+2. The difference between A2C and A3C is the word Asynchronous that is missing for the A2C. What this means is that the A2C runs all the agents n-steps and waits until everybody is finished and then it updates the weights with all the accumulated gradients, but the A3C does not wait for every agent to be done but instead each agent updates the global weights as soon as they are done and then starts training again which means that the different agent can be opperating on the environment with different weights at the same time.
+3. This could be the case because for A3C different agents can have different weights at the same time, the behaviour of the different agents will be more diverse and therefore we could think that the model experience more exploration for the same price. But as written in some of the reports above, the they have only experienced evidence of A2C being superior to A3C.
+
 ### Neural Network Parameterization
 
 We will use neural networks to parameterize both the value function and the policy.
@@ -614,23 +617,27 @@ class ActorNet(torch.nn.Module):
 
         # see torch.nn.Sequential, for a hint
         # TODO
+        self.layers = torch.nn.Sequential(torch.nn.Linear(num_state,16),torch.nn.ReLU(),torch.nn.Linear(16,num_action),torch.nn.Softmax())
 
 
 
-    # return a probability distribution over the action space
     def forward(self, state):
-        # TODO
+        output = self.layers(state)
+        return output
 
 
 class CriticNet(torch.nn.Module):
     def __init__(self, num_state: int):
         super(CriticNet, self).__init__()
+        self.layers = torch.nn.Sequential(torch.nn.Linear(num_state,16),torch.nn.ReLU(),torch.nn.Linear(16,1),)
 
         # see torch.nn.Sequential, for a hint
         # TODO
 
     # return a single value
     def forward(self, state):
+        output = self.layers(state)
+        return output
         # TODO
 ```
 
@@ -648,6 +655,7 @@ Note that the agent should solve the problem in under 1000 episodes.
 ```{python}
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 torch.set_default_device(device)
+
 print(device)
 ```
 
@@ -666,8 +674,14 @@ class A2C():
         """
         self.obs_dim = env.observation_space.shape[0]
         self.action_dim = env.action_space.n
+        self.env = env
+        self.tau= tau
+        self.actor = ActorNet(self.obs_dim,self.action_dim)
+        self.critic = CriticNet(self.obs_dim)
+        self.optimizer = torch.optim.Adam([{"params":self.actor.parameters()},{"params":self.critic.parameters()}], lr = 0.001)
+        self.n_step = 5
+        self.gamma  = 0.99
 
-        # TODO
 
 
     def train(self, n_episodes, max_episode_len):
@@ -679,13 +693,70 @@ class A2C():
             n_episodes: number of episodes to train
             max_episode_len: maximum length of each episode
         """
+        rewards_each_episode = []
+        for episode in range(n_episodes):
+            rewards_each_episode.append(np.sum(self.run_episode(max_episode_len)))
 
-        # TODO
+        return rewards_each_episode
+            
+        
+    def run_episode(self,max_length: int):
+        rewards = []
+        current_state, _ = self.env.reset()
+        index = 0
+
+        while index < max_length:
+            steps_left = max_length - index
+            new_rewards, new_state, end_episode= self.run_n_steps(current_state,steps_left)
+            rewards += new_rewards
+
+            current_state = new_state
+
+            if end_episode:
+                break
+
+        return rewards
+
+    def run_n_steps(self,first_state,steps_left):
+        states = []
+        actions = []
+        rewards = []
+        categoricals = []
+        n = np.min([steps_left,self.n_step])
+        end_episode = False
+        current_state = first_state
+
+        large_r = self.critic(torch.tensor(first_state).to(device)).detach()
+
+        for i in range(n):
+            probs = self.actor(torch.tensor(current_state).to(device)).squeeze()
+            m = torch.distributions.Categorical(probs)
+            action = m.sample().cpu().numpy()
+            observations,reward, terminated, truncated, _ = self.env.step(action)
+            states.append(current_state) 
+            actions.append(action.item())
+            rewards.append(reward)
+            categoricals.append(m)
+
+            current_state = observations
+
+
+            if terminated or truncated:
+                large_r= 0
+                end_episode = True
+                break
+
+        current_state = states[-1]
+
+        states,actions,rewards = torch.tensor(states).to(device), torch.tensor(actions).to(device) ,torch.tensor(rewards).to(device)
+        
+        self.update_step(states,actions,rewards, categoricals,large_r)
+
+        return rewards.cpu(), current_state,end_episode
 
 
 
-
-    def update_step(self, states: torch.Tensor, actions: torch.Tensor, rewards: torch.Tensor) -> None:
+    def update_step(self, states: torch.Tensor, actions: torch.Tensor, rewards: torch.Tensor, categoricals,large_r: int,) -> None:
         """Perform a single update step for both actor and critic networks. Loss is averaged over the provided trajectory.
 
         Note that we do not require the actions themselves, since log probs can be computed from action indices and the policy distribution.
@@ -704,6 +775,16 @@ class A2C():
         assert rewards.shape == (T,)
 
         # TODO
+        self.optimizer.zero_grad()
+        for i in range(T):
+            index = T -i -1
+            large_r = rewards[index] + self.gamma * large_r
+            loss_actor = -categoricals[index].log_prob(actions[index])*(large_r - self.critic(states[index]).detach())
+            loss_critic = - (large_r -self.critic(states[index]))**2
+            loss_actor.backward()
+            loss_critic.backward()
+        self.optimizer.step()
+
 ```
 
 We use a simple criteria to judge whether you solve the problem.
@@ -754,6 +835,7 @@ a2c = A2C(env)
 episodic_rewards = a2c.train(n_episodes, max_episode_len)
 was_run_successful(episodic_rewards)
 ```
+
 
 **Useful hints:**
 
