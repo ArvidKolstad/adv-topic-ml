@@ -28,6 +28,7 @@ import tqdm
 
 import torch
 import torch.distributions
+import pygame
 
 
 import matplotlib.pyplot as plt
@@ -617,7 +618,7 @@ class ActorNet(torch.nn.Module):
 
         # see torch.nn.Sequential, for a hint
         # TODO
-        self.layers = torch.nn.Sequential(torch.nn.Linear(num_state,16),torch.nn.ReLU(),torch.nn.Linear(16,num_action),torch.nn.Softmax())
+        self.layers = torch.nn.Sequential(torch.nn.Linear(num_state,64),torch.nn.ReLU(),torch.nn.Linear(64,32),torch.nn.ReLU(),torch.nn.Linear(32,num_action),torch.nn.Softmax(dim = -1))
 
 
 
@@ -629,7 +630,7 @@ class ActorNet(torch.nn.Module):
 class CriticNet(torch.nn.Module):
     def __init__(self, num_state: int):
         super(CriticNet, self).__init__()
-        self.layers = torch.nn.Sequential(torch.nn.Linear(num_state,16),torch.nn.ReLU(),torch.nn.Linear(16,1),)
+        self.layers = torch.nn.Sequential(torch.nn.Linear(num_state,64),torch.nn.ReLU(),torch.nn.Linear(64,32),torch.nn.Linear(32,1))
 
         # see torch.nn.Sequential, for a hint
         # TODO
@@ -679,8 +680,8 @@ class A2C():
         self.actor = ActorNet(self.obs_dim,self.action_dim)
         self.critic = CriticNet(self.obs_dim)
         self.optimizer = torch.optim.Adam([{"params":self.actor.parameters()},{"params":self.critic.parameters()}], lr = 0.001)
-        self.n_step = 5
-        self.gamma  = 0.99
+        self.n_step = 10
+        self.gamma  = 0.95
 
 
 
@@ -711,6 +712,7 @@ class A2C():
             rewards += new_rewards
 
             current_state = new_state
+            index+= len(rewards)
 
             if end_episode:
                 break
@@ -726,7 +728,6 @@ class A2C():
         end_episode = False
         current_state = first_state
 
-        large_r = self.critic(torch.tensor(first_state).to(device)).detach()
 
         for i in range(n):
             probs = self.actor(torch.tensor(current_state).to(device)).squeeze()
@@ -745,10 +746,11 @@ class A2C():
                 large_r= 0
                 end_episode = True
                 break
+            elif i == n-1:
+                large_r = self.critic(torch.tensor(current_state).to(device)).detach()
 
-        current_state = states[-1]
 
-        states,actions,rewards = torch.tensor(states).to(device), torch.tensor(actions).to(device) ,torch.tensor(rewards).to(device)
+        states,actions,rewards = torch.tensor(np.array(states)).to(device), torch.tensor(np.array(actions)).to(device) ,torch.tensor(np.array(rewards)).to(device)
         
         self.update_step(states,actions,rewards, categoricals,large_r)
 
@@ -780,7 +782,7 @@ class A2C():
             index = T -i -1
             large_r = rewards[index] + self.gamma * large_r
             loss_actor = -categoricals[index].log_prob(actions[index])*(large_r - self.critic(states[index]).detach())
-            loss_critic = - (large_r -self.critic(states[index]))**2
+            loss_critic = (large_r -self.critic(states[index]))**2
             loss_actor.backward()
             loss_critic.backward()
         self.optimizer.step()
@@ -857,7 +859,7 @@ You can run the cell below to visualize your policy and help you understand what
 ```{python}
 from IPython.display import clear_output
 def visualize_policy(a2c: A2C):
-    #env_wrap = gym.wrappers.RecordVideo(env, './results')
+    env_wrap = gym.wrappers.RecordVideo(env, './results')
     env_render = gym.make("CartPole-v1", render_mode="rgb_array")
     for num_episode in range(1):
         s,_ = env_render.reset()
