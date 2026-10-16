@@ -128,7 +128,7 @@ Is this an episodic or continuing environment?
 
 #### Answer
 
-This is an continuing environment because there is no specific end state, but the model returns to state = 0  when getting a reward and can directly after that continue in its environment as usual.
+This is an continuing environment because there is no specific end state, and the model returns to state = 0  when getting a reward and can directly after that continue in its environment as usual.
 
 ## Task 2: MDP simulation logic
 
@@ -194,11 +194,10 @@ def riverswim_simulation(
         new_action= agent.act(states[-1])
         new_state, reward,terminated,truncated,info = env.step(new_action)
 
+        agent.update(states[-1], new_action, reward, new_state)
+
         if (callback_interval is not None) and (round % callback_interval==0):
                 callback(agent,states[-1],new_action,reward)
-
-
-        agent.update(states[-1], new_action, reward, new_state)
 
         states.append(new_state)
         actions.append(new_action)
@@ -486,6 +485,8 @@ def qvalue_iteration(env_dynamics: dict, gamma: float, threshold: float = 1e-6) 
         if np.sum(q_values_done) ==  n_states * n_actions:
             break
 
+        new_q_values= np.zeros((n_states,n_actions))
+
         for state in range(n_states):
             for action in range(n_actions):
                 possible_states = env_dynamics[state][action]
@@ -493,7 +494,13 @@ def qvalue_iteration(env_dynamics: dict, gamma: float, threshold: float = 1e-6) 
                 if np.abs(new_q_value - q_values[state,action] ) < threshold:
                     q_values_done[state,action] =True
 
-                q_values[state,action] = new_q_value
+                new_q_values[state,action] = new_q_value
+        if np.max(np.abs(q_values - new_q_values)) < threshold:
+            q_values = np.copy(new_q_values)
+            break
+        else:
+            q_values = np.copy(new_q_values)
+
     return q_values
 
 ```
@@ -544,19 +551,19 @@ def get_real_q_values():
 
 def plot_q_values(q_values, q_min,q_max):
     fig,ax = plt.subplots(1,1, figsize=(8,3))
-    ax.imshow(q_values, cmap="viridis", vmin=q_min, vmax=q_max)
+    ax.imshow(q_values.T, cmap="viridis", vmin=q_min, vmax=q_max)
     n_states, n_actions= q_values.shape
     
     for i in range(n_states):
         for j in range(n_actions):
-            ax.text(j,i, f"{q_values[i,j]:.3f}", ha="center", va="center", color="white", fontsize = 8)
+            ax.text(i,j, f"{q_values[i,j]:.3f}", ha="center", va="center", color="white", fontsize = 8)
    
-    ax.set_yticks(range(n_states))
-    ax.set_yticklabels([rf"$S_{s}$" for s in range(n_states)])
-    ax.set_xticks(range(n_actions))
-    ax.set_xticklabels(["Left (0)", "Right (1)"], fontsize = 6)
-    ax.set_xlabel("Action")
-    ax.set_ylabel("State")
+    ax.set_xticks(range(n_states))
+    ax.set_xticklabels([rf"$S_{s}$" for s in range(n_states)])
+    ax.set_yticks(range(n_actions))
+    ax.set_yticklabels(["Left (0)", "Right (1)"], fontsize = 6)
+    ax.set_ylabel("Action")
+    ax.set_xlabel("State")
     plt.show()
     plt.close()
 
