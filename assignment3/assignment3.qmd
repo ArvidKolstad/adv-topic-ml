@@ -234,7 +234,6 @@ def get_initial_parameters():
     theta = np.zeros(196)
     return theta
 
-    # TODO
 ```
 
 **Task 1.3 (2 pts):** 
@@ -679,9 +678,9 @@ class A2C():
         self.env = env
         self.tau= tau
         self.actor = ActorNet(self.obs_dim,self.action_dim)
-        self.critic = CriticNet(self.obs_dimc
-        self.optimizer = torch.optim.Adam([{"params":self.actor.parameters(), "lr":8e-4},{"params":self.critic.parameters(),"lr": 4e-3}], weight_decay=1e-3)
-        self.n_step = 500
+        self.critic = CriticNet(self.obs_dim)
+        self.optimizer = torch.optim.Adam([{"params":self.actor.parameters(), "lr":1e-3},{"params":self.critic.parameters(),"lr": 7e-3}], weight_decay=1e-3)
+        self.n_step = 1000
         self.gamma  = 0.99
 
 
@@ -743,7 +742,7 @@ class A2C():
             current_state = observations
 
 
-            if terminated or truncated:
+            if terminated:
                 large_r= 0
                 end_episode = True
                 break
@@ -781,9 +780,11 @@ class A2C():
         self.optimizer.zero_grad()
         for i in range(T):
             index = T -i -1
+            critic_output = self.critic(states[index])
             large_r = rewards[index] + self.gamma * large_r
-            loss_actor = -categoricals[index].log_prob(actions[index])*(large_r - self.critic(states[index]).detach())
-            loss_critic = (large_r -self.critic(states[index]))**2
+            h =  categoricals[index].entropy()
+            loss_actor = (-categoricals[index].log_prob(actions[index])*(large_r - critic_output.detach()) -self.tau*h)/T
+            loss_critic = (large_r -critic_output)**2/T
             loss_actor.backward()
             loss_critic.backward()
         self.optimizer.step()
@@ -900,6 +901,8 @@ where $J(\theta)$ is the vanilla policy gradient objective and $\tau$ is a hyper
 
 *Write in the Markdown cell below (use LaTeX-math mode for equations, etc.).*
 
+This is because the model often converges fast to a policy that is non-optimal but easy to find, and therefore to combat this, we introduce this penalty to only get conversion if the policy is good enough.
+
 
 **Task 2.5 (1.5 pt):** Modify the training code from above to demonstrate A2C with entropy regularization. Implement a new loss function that returns your modified loss with entropy regularization. Use entropy regularisation on the CartPole task. Visualize your results in **the cell below** and show that you have solved the problem. As before, the agent must achieve an average reward of 475 over 100 consecutive episodes. The agent can train on at most 1000 episodes.
 
@@ -909,7 +912,7 @@ Also feel free to explore different values of $\tau$ and it's effect on the poli
 # Run your implementation here.
 n_episodes = 1000
 max_episode_len = 500
-tau = 1.0 # TODO: Set to non-zero value.
+tau = 0.05 # TODO: Set to non-zero value.
 a2c_ent = A2C(env, tau)
 episodic_rewards_ent = a2c_ent.train(n_episodes, max_episode_len)
 was_run_successful(episodic_rewards_ent)
