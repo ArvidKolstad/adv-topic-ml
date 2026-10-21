@@ -445,7 +445,9 @@ class ReinforceLearner:
                 more_steps = False
 
 
-        self.world.render_state()
+        if visualize_steps:
+            self.world.render_state()
+
         actions = np.array(actions)
         states = np.array(states)
         rewards = np.array(rewards)
