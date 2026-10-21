@@ -246,6 +246,58 @@ Then, using your expression, fill in `direct_parameterisation_derivative`, that 
 **Hint:** Only 4 entries of $\frac{\partial \pi_\theta(a|s)}{\partial \theta} \in \mathbb{R}^{196}$ should be nonzero for fixed $a,s$.
 
 TODO
+We look for $\dfrac{\partial \pi_\theta(a|s)}{\partial \theta_{s',a'}}$.
+
+*1.* $\phi_{s,a}$ is one-hot with a 1 at position $4s+a$ and 0 elsewhere, so $\theta^\top \phi_{s,a} = \theta_{s,a}$, the value of $\theta$ at position $4s+a$.
+
+*2.* Policy becomes:
+
+$$\pi_\theta(a|s) = \frac{e^{\theta_{s,a}}}{\sum_b e^{\theta_{s,b}}}$$
+
+With $f = e^{\theta_{s,a}}$ and $g = \sum_b e^{\theta_{s,b}}$, we get:
+
+$$\frac{\partial \pi_\theta(a|s)}{\partial \theta_{s',a'}} = \frac{f'g - fg'}{g^2}$$
+
+*3.* Three cases: $s' \neq s$; $s' = s, a' = a$; $s' = s, a' \neq a$.
+
+$s' \neq s$:
+
+$$\frac{\partial \pi_\theta(a|s)}{\partial \theta_{s',a'}} = \frac{\frac{\partial e^{\theta_{s,a}}}{\partial \theta_{s',a'}} \sum_b e^{\theta_{s,b}} - e^{\theta_{s,a}} \frac{\partial \sum_b e^{\theta_{s,b}}}{\partial \theta_{s',a'}}}{\left(\sum_b e^{\theta_{s,b}}\right)^2} = \frac{0 \cdot g - f \cdot 0}{g^2} = 0$$
+
+$s' = s,\ a' = a$:
+
+$$\begin{aligned}
+\frac{\partial \pi_\theta(a|s)}{\partial \theta_{s,a}}
+&= \frac{\frac{\partial e^{\theta_{s,a}}}{\partial \theta_{s,a}} \sum_b e^{\theta_{s,b}} - e^{\theta_{s,a}} \frac{\partial \sum_b e^{\theta_{s,b}}}{\partial \theta_{s,a}}}{\left(\sum_b e^{\theta_{s,b}}\right)^2}
+= \frac{e^{\theta_{s,a}} \sum_b e^{\theta_{s,b}} - e^{\theta_{s,a}} e^{\theta_{s,a}}}{\left(\sum_b e^{\theta_{s,b}}\right)^2}
+&= \frac{e^{\theta_{s,a}}}{\sum_b e^{\theta_{s,b}}} - \frac{e^{\theta_{s,a}}}{\sum_b e^{\theta_{s,b}}} \cdot \frac{e^{\theta_{s,a}}}{\sum_b e^{\theta_{s,b}}}
+= \pi_\theta(a|s) - \pi_\theta(a|s)\,\pi_\theta(a|s)
+= \pi_\theta(a|s)\big(1 - \pi_\theta(a|s)\big)
+\end{aligned}$$
+
+$s' = s,\ a' \neq a$:
+
+$$\begin{aligned}
+\frac{\partial \pi_\theta(a|s)}{\partial \theta_{s,a'}}
+&= \frac{\frac{\partial e^{\theta_{s,a}}}{\partial \theta_{s,a'}} \sum_b e^{\theta_{s,b}} - e^{\theta_{s,a}} \frac{\partial \sum_b e^{\theta_{s,b}}}{\partial \theta_{s,a'}}}{\left(\sum_b e^{\theta_{s,b}}\right)^2}
+= \frac{0 \cdot \sum_b e^{\theta_{s,b}} - e^{\theta_{s,a}} e^{\theta_{s,a'}}}{\left(\sum_b e^{\theta_{s,b}}\right)^2}
+&= -\frac{e^{\theta_{s,a}}}{\sum_b e^{\theta_{s,b}}} \cdot \frac{e^{\theta_{s,a'}}}{\sum_b e^{\theta_{s,b}}}
+= \pi_\theta(a|s)\big(0 - \pi_\theta(a'|s)\big)
+\end{aligned}$$
+
+Combining three cases:
+
+$$\frac{\partial \pi_\theta(a|s)}{\partial \theta_{s',a'}} =
+\begin{cases}
+0 & \text{if } s' \neq s \\
+1 \cdot \pi_\theta(a|s)\big(1 - \pi_\theta(a|s)\big) & \text{if } s' = s,\ a' = a \\
+1 \cdot \pi_\theta(a|s)\big(0 - \pi_\theta(a'|s)\big) & \text{if } s' = s,\ a' \neq a
+\end{cases}$$
+
+which can be written as
+
+$$\frac{\partial \pi_\theta(a|s)}{\partial \theta_{s',a'}} = \mathbf{1}[s' = s]\,\pi_\theta(a|s)\big(\mathbf{1}[a' = a] - \pi_\theta(a'|s)\big)$$
+
 
 ```{python}
 def softmax(weights,action_vectors,action_done):
@@ -333,7 +385,7 @@ check()
 
 The REINFORCE-algorithm aims to optimize the state-value function for the starting state which is dependent on the policy. Therefore we try to improve our policy to maximize this function. In our case we have a softmax function of a linear layer with weights which are multiplied by the one hot encoding vector. By changing the weight to improve the state-value function we can achieve this. This is done with the following algorithm:
 $\theta <- \theta + \alpha \gamma^t G \nabla ln(\pi(a|s)) $
-This works on the idea by taking the gradient of the state-value function with respect to the weights we can update these weights in the direction where the state value function increases the most at each step. This the update uses the policy-gradient theorem which is a analytic expression for the derivative of the state-value that contains no derivative of the state distribution. By sampling over different epsiodes, and updating after each episode this creates the same effect as calculation the state-distribution would. This is because the state distribution both depends on the policy and the environment, and therefore the $\gamma^2 G \nabla ln(\pi(a|s))$ is a unbiased estimate of the gradient of the state-value. Some episodes might be noisy but over many episods it converges to the true value.
+This works on the idea by taking the gradient of the state-value function with respect to the weights we can update these weights in the direction where the state value function increases the most at each step. This the update uses the policy-gradient theorem which is a analytic expression for the derivative of the state-value that contains no derivative of the state distribution. By sampling over different epsiodes, and updating after each episode this creates the same effect as calculation the state-distribution would. This is because the state distribution both depends on the policy and the environment, and therefore sampling the value of $\gamma^t G \nabla ln(\pi(a|s))$ is a unbiased estimate of the gradient of the state-value. Some episodes might be noisy but over many episods it converges to the true value.
 
 **Task 1.5 (3 pts):** Using your functions implemented in Task 1.1, 1.2 and 1.3, fill in the `ReinforceLearner` class. You can use the already implemented methods of the GridWorld class: 
 - `reset_world`: reset the world to starting state
@@ -392,6 +444,8 @@ class ReinforceLearner:
             if self.world.is_terminal():
                 more_steps = False
 
+
+        self.world.render_state()
         actions = np.array(actions)
         states = np.array(states)
         rewards = np.array(rewards)
@@ -498,12 +552,12 @@ Explain how the exploration-exploitation trade-off was circumvented by your choi
 *Write in the Markdown cell below (use LaTeX-math mode for equations, etc.).*
 
 
-If you initalize the weights to be uniform, the agent will in the beginning before updating anything, every action totaly random because of the softmax function. If the the initalizations are higher in some areas these will get prioritized and therefore the agent will not explore these as much.
+If you initalize the weights to be uniform, the agent will in the beginning before updating anything, every action totaly random because of the softmax function. If the the initalizations are higher in some areas, and these will get prioritized and therefore the agent will explore these more than where the values are lower.
 
 **Task 1.8 (0.5 pt):** In a few sentences explain the shortcomings of the direct parametrisation (one parameter for each state-action pair).
 *Write in the Markdown cell below (use LaTeX-math mode for equations, etc.).*
 
-One big drawback is that all the states are looked at totaly independent as they are not connected in any way, which means that generalization can't happen meaning that what the agent learns in one state isn't being transfered to the other. Another drawback is the dimensionality problem of this. It needs 4 different weights for every state so if one would scale this to a larger environment the weights would increase with $4*n^2$.
+One big drawback is that all the states are looked at totaly independent as they are not connected in any way, which means that generalization can't happen meaning that what the agent learns in one state isn't being transfered to the other. Another drawback is the dimensionality problem of this. It needs 4 different weights for every state so if one would scale this to a larger environment the weights would increase with $4*n^2$ were $n$ is the number of cells per side.
 
 
 ##  Part 2: CartPole with A2C (9 pts)
@@ -595,7 +649,7 @@ First, you should familiarise yourself with the following paper [paper](https://
 
 TODO
 
-1. The A2C uses multiple diffrent training instances to create the the updates of the weightswhich creates a more diversive training data than just one agent training. It's a much more efficient way of creating the same effects as experience replay. It also implements n-step updates which means that you can have online training, and full Monte Carlo returns can be very noisy, and therefore the learning is much more stabel. It also because it's a actor-critic model, creates an estimate for both the state-value function and the policy with separate models, where the critice acts like a benchmark that varies over all the states.
+1. The A2C uses multiple diffrent training instances to create the the updates of the weightswhich creates a more diversive training data than just one agent training. It's a much more efficient way of creating the same effects as experience replay. It also implements n-step updates which means that you can have online training, and full Monte Carlo returns can be very noisy, and therefore the learning is much more stabel. It also because it's a actor-critic model, creates an estimate for both the state-value function and the policy with separate models, where the critice acts like a benchmark that varies over all the states. Because of the critic that is trained, the model has a baseline were each reward can be compared to the baseline, and because of this, we get negative steps for the gradient, for actions that perform worse than baseline.
 2. The difference between A2C and A3C is the word Asynchronous that is missing for the A2C. What this means is that the A2C runs all the agents n-steps and waits until everybody is finished and then it updates the weights with all the accumulated gradients, but the A3C does not wait for every agent to be done but instead each agent updates the global weights as soon as they are done and then starts training again which means that the different agent can be opperating on the environment with different weights at the same time.
 3. This could be the case because for A3C different agents can have different weights at the same time, the behaviour of the different agents will be more diverse and therefore we could think that the model experience more exploration for the same price. But as written in some of the reports above, the they have only experienced evidence of A2C being superior to A3C.
 
@@ -870,7 +924,6 @@ def visualize_policy(a2c: A2C):
             #env.render()
 
             state = torch.tensor(s, dtype=torch.float).view(1, -1)
-
             prob = a2c.actor(state)
             policy = torch.distributions.categorical.Categorical(prob)
             action = policy.sample()
@@ -901,7 +954,7 @@ where $J(\theta)$ is the vanilla policy gradient objective and $\tau$ is a hyper
 
 *Write in the Markdown cell below (use LaTeX-math mode for equations, etc.).*
 
-This is because the model often converges fast to a policy that is non-optimal but easy to find, and therefore to combat this, we introduce this penalty to only get conversion if the policy is good enough.
+This is because the model often converges fast to a policy that is non-optimal but easy to find, and therefore to combat this, we introduce this extra reward to favor more entropy, and therefore we only get conversion if the policy is good enough to be better than this extra reward.
 
 
 **Task 2.5 (1.5 pt):** Modify the training code from above to demonstrate A2C with entropy regularization. Implement a new loss function that returns your modified loss with entropy regularization. Use entropy regularisation on the CartPole task. Visualize your results in **the cell below** and show that you have solved the problem. As before, the agent must achieve an average reward of 475 over 100 consecutive episodes. The agent can train on at most 1000 episodes.
@@ -917,5 +970,4 @@ a2c_ent = A2C(env, tau)
 episodic_rewards_ent = a2c_ent.train(n_episodes, max_episode_len)
 was_run_successful(episodic_rewards_ent)
 ```
-
 
