@@ -685,7 +685,7 @@ class ActorNet(torch.nn.Module):
 class CriticNet(torch.nn.Module):
     def __init__(self, num_state: int):
         super(CriticNet, self).__init__()
-        self.layers = torch.nn.Sequential(torch.nn.Linear(num_state,32),torch.nn.ReLU(),torch.nn.Linear(32,8),torch.nn.ReLU(),torch.nn.Linear(8,1),torch.nn.ReLU())
+        self.layers = torch.nn.Sequential(torch.nn.Linear(num_state,32),torch.nn.ReLU(),torch.nn.Linear(32,8),torch.nn.ReLU(),torch.nn.Linear(8,1))
 
 
         # see torch.nn.Sequential, for a hint
